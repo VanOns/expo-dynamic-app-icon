@@ -4,7 +4,7 @@ import {
   getAppIcon,
   IconName,
   setAppIcon,
-} from "@howincodes/expo-dynamic-app-icon";
+} from "@vanons/expo-dynamic-app-icon";
 import { useState } from "react";
 
 export default function App() {

@@ -1238,7 +1238,7 @@
   dependencies:
     "@hapi/hoek" "^9.0.0"
 
-"@howincodes/expo-dynamic-app-icon@link:./..":
+"@vanons/expo-dynamic-app-icon@link:./..":
   version "0.0.0"
   uid ""
 
