@@ -1,6 +1,6 @@
 # 🎨 @vanons/expo-dynamic-app-icon
 
-Easily **change your app icon dynamically** in **Expo SDK 52**!
+Easily **change your app icon dynamically** in **Expo SDK 52, 53, and 54**!
 
 ## 🚀 **What's New in v2:**
 
