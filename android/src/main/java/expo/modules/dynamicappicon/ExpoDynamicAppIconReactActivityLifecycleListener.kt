@@ -1,9 +1,9 @@
 package expo.modules.dynamicappicon
 
 import android.app.Activity
-import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Looper
 import android.util.Log
@@ -78,27 +78,41 @@ private fun applyIconChange(activity: Activity) {
 
         if (!doesComponentExist(newComponent)) {
             SharedObject.shouldChangeIcon = false
+            Log.e("IconChange", "Component does not exist: $icon")
             return
         }
 
         try {
-            // Get all launcher activities and disable all except the new one
-            val packageInfo = pm.getPackageInfo(
-                SharedObject.packageName,
-                PackageManager.GET_ACTIVITIES or PackageManager.GET_DISABLED_COMPONENTS
+            // Get all launcher activities using queryIntentActivities
+            // This includes both activities and activity-aliases with launcher intent-filters
+            val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(SharedObject.packageName)
+            }
+            
+            val launcherActivities = pm.queryIntentActivities(
+                launcherIntent,
+                PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_DEFAULT_ONLY
             )
 
-            packageInfo.activities?.forEach { activityInfo ->
-                val componentName = ComponentName(SharedObject.packageName, activityInfo.name)
+            // Disable all launcher components except the new one
+            launcherActivities.forEach { resolveInfo ->
+                val componentName = resolveInfo.activityInfo.componentName
+                val componentNameString = componentName.className
+                
+                // Skip if this is the component we want to enable
+                if (componentNameString == icon) {
+                    return@forEach
+                }
+                
                 val state = pm.getComponentEnabledSetting(componentName)
-
-                if (activityInfo.name != icon && state != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                if (state != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
                     pm.setComponentEnabledSetting(
                         componentName,
                         PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                         PackageManager.DONT_KILL_APP
                     )
-                    Log.i("IconChange", "Disabled component: ${activityInfo.name}")
+                    Log.i("IconChange", "Disabled component: $componentNameString")
                 }
             }
 
@@ -125,15 +139,22 @@ private fun applyIconChange(activity: Activity) {
 
 private fun ensureAtLeastOneComponentEnabled(context: Context) {
     val pm = SharedObject.pm ?: return
-    val packageInfo = pm.getPackageInfo(
-        SharedObject.packageName,
-        PackageManager.GET_ACTIVITIES or PackageManager.GET_DISABLED_COMPONENTS
+    
+    // Check all launcher components (activities and activity-aliases)
+    val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+        addCategory(Intent.CATEGORY_LAUNCHER)
+        setPackage(SharedObject.packageName)
+    }
+    
+    val launcherActivities = pm.queryIntentActivities(
+        launcherIntent,
+        PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_DEFAULT_ONLY
     )
 
-    val hasEnabledComponent = packageInfo.activities?.any { activityInfo ->
-        val componentName = ComponentName(SharedObject.packageName, activityInfo.name)
+    val hasEnabledComponent = launcherActivities.any { resolveInfo ->
+        val componentName = resolveInfo.activityInfo.componentName
         pm.getComponentEnabledSetting(componentName) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-    } ?: false
+    }
 
     if (!hasEnabledComponent) {
         val mainActivityName = "${SharedObject.packageName}.MainActivity"
@@ -153,22 +174,36 @@ private fun ensureAtLeastOneComponentEnabled(context: Context) {
 
     /**
      * Check if a component exists in the manifest (including disabled ones).
+     * This checks both activities and activity-aliases.
      */
     private fun doesComponentExist(componentName: ComponentName): Boolean {
-    return try {
-        val packageInfo = SharedObject.pm?.getPackageInfo(
-            SharedObject.packageName,
-            PackageManager.GET_ACTIVITIES or PackageManager.GET_DISABLED_COMPONENTS
-        )
-
-        val activityExists = packageInfo?.activities?.any { it.name == componentName.className } == true
-
-        activityExists
-    } catch (e: Exception) {
-
-        false
+        return try {
+            val pm = SharedObject.pm ?: return false
+            
+            // Try to get the component's enabled state - if it doesn't exist, this will throw or return DEFAULT
+            val state = pm.getComponentEnabledSetting(componentName)
+            
+            // If we get here without exception, the component exists
+            // We can also verify by checking if it's not in the default state (which might indicate it doesn't exist)
+            // But actually, DEFAULT state is valid for components that exist but haven't been explicitly set
+            // So we'll use queryIntentActivities to verify it exists
+            
+            val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(componentName.packageName)
+            }
+            
+            val activities = pm.queryIntentActivities(
+                launcherIntent,
+                PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_DEFAULT_ONLY
+            )
+            
+            activities.any { it.activityInfo.componentName == componentName }
+        } catch (e: Exception) {
+            Log.e("IconChange", "Error checking if component exists: ${componentName.className}", e)
+            false
+        }
     }
-}
 
 
 }
